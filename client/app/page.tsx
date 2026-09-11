@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { getUserRole } from '@/lib/role'
 import { Loader2 } from 'lucide-react'
 
 export default function Home() {
@@ -16,7 +17,12 @@ export default function Home() {
       } = await supabase.auth.getSession()
 
       if (session) {
-        router.replace('/dashboard')
+        const role = await getUserRole(supabase, session.user)
+        if (role === 0) {
+          router.replace('/admin')
+        } else {
+          router.replace('/dashboard')
+        }
       } else {
         router.replace('/login')
       }

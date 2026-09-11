@@ -1,6 +1,6 @@
 'use client'
 
-import { Clock, Phone, MapPin, ExternalLink, CheckCircle2, XCircle } from 'lucide-react'
+import { Clock, Phone, MapPin, ExternalLink, CheckCircle2, XCircle, Trash2 } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { ReportItem } from '@/types/report'
 
@@ -9,6 +9,7 @@ interface AdminReportCardProps {
   actionLoading: boolean
   onAccept: (id: string) => void
   onRejectClick: (report: ReportItem) => void
+  onDeleteClick: (report: ReportItem) => void
 }
 
 export function AdminReportCard({
@@ -16,6 +17,7 @@ export function AdminReportCard({
   actionLoading,
   onAccept,
   onRejectClick,
+  onDeleteClick,
 }: AdminReportCardProps) {
   return (
     <div className="bg-white border border-zinc-200 rounded-xl p-5 shadow-xs space-y-4">
@@ -142,6 +144,16 @@ export function AdminReportCard({
             <span>Reject Report</span>
           </button>
         )}
+
+        <button
+          onClick={() => onDeleteClick(report)}
+          disabled={actionLoading}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 bg-red-50/50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors disabled:opacity-50"
+          title="Delete this report permanently"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          <span>Delete</span>
+        </button>
       </div>
     </div>
   )

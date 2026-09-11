@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { getUserRole } from '@/lib/role'
 import { Mail, Lock, Eye, EyeOff, ShieldAlert, Loader2, ArrowRight } from 'lucide-react'
 
 export function LoginForm() {
@@ -33,7 +34,12 @@ export function LoginForm() {
       }
 
       if (data.session) {
-        router.push('/dashboard')
+        const role = await getUserRole(supabase, data.session.user)
+        if (role === 0) {
+          router.push('/admin')
+        } else {
+          router.push('/dashboard')
+        }
         router.refresh()
       } else {
         setErrorMessage('Unable to log in. Please check your credentials.')

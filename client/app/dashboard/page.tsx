@@ -5,17 +5,16 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { useGpsLocation } from '@/hooks/useGpsLocation'
+import { getUserRole } from '@/lib/role'
 import { Header } from '@/components/common/Header'
 import { BottomNav, type CitizenTab } from '@/components/common/BottomNav'
 import { CitizenHomeTab } from '@/components/citizen/CitizenHomeTab'
 import { CitizenReportTab } from '@/components/citizen/CitizenReportTab'
 import { CitizenContactsTab } from '@/components/citizen/CitizenContactsTab'
 import { ReportDetailModal } from '@/components/citizen/ReportDetailModal'
-import { AdminCommandCenter } from '@/components/admin/AdminCommandCenter'
-import { AdminRejectModal } from '@/components/admin/AdminRejectModal'
 import { sanitizeDate, type UserProfile } from '@/types/profile'
-import type { ReportItem, ReportStatus } from '@/types/report'
-import { Loader2, AlertTriangle, PhoneCall, X } from 'lucide-react'
+import type { ReportItem } from '@/types/report'
+import { Loader2, AlertTriangle, X } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 
 export default function DashboardPage() {
@@ -38,7 +37,6 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<CitizenTab>('home')
 
   // Reports State
-  const [allReports, setAllReports] = useState<ReportItem[]>([])
   const [userReports, setUserReports] = useState<ReportItem[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
   const [tableMissingNotice, setTableMissingNotice] = useState(false)
@@ -57,16 +55,10 @@ export default function DashboardPage() {
   // GPS Location Hook
   const { gpsLocation, gpsLoading, gpsError, acquireGpsLocation } = useGpsLocation()
 
-  // Admin Verification States
-  const [adminFilter, setAdminFilter] = useState<'all' | ReportStatus>('all')
-  const [selectedReportForAction, setSelectedReportForAction] = useState<ReportItem | null>(null)
-  const [rejectReason, setRejectReason] = useState('')
-  const [actionLoading, setActionLoading] = useState(false)
-
   // Citizen Viewing Detail Modal
   const [viewingReport, setViewingReport] = useState<ReportItem | null>(null)
 
-  // 1. Initial Session & Profile Loading
+  // 1. Initial Session & Role Verification
   useEffect(() => {
     const initAuth = async () => {
       const supabase = createClient()
@@ -82,16 +74,23 @@ export default function DashboardPage() {
       const currentUser = session.user
       setUser(currentUser)
 
-      const meta = currentUser.user_metadata || {}
-      const userRole = meta.role !== undefined ? Number(meta.role) : 1
+      // Read role from public.profiles or metadata
+      const userRole = await getUserRole(supabase, currentUser)
 
+      // When the user's role is 0, direct them to the dedicated admin page
+      if (userRole === 0) {
+        router.replace('/admin')
+        return
+      }
+
+      const meta = currentUser.user_metadata || {}
       const loadedProfile: UserProfile = {
         fullName: meta.full_name || currentUser.email?.split('@')[0] || 'Citizen',
         phone: meta.phone_number || '',
         email: currentUser.email || '',
         gender: meta.gender || 'Not specified',
         dob: meta.date_of_birth || 'Not specified',
-        role: (userRole === 0 ? 0 : 1),
+        role: 1,
       }
       setProfile(loadedProfile)
 
@@ -106,7 +105,7 @@ export default function DashboardPage() {
         phone_number: loadedProfile.phone || null,
         gender: safeInitGender,
         date_of_birth: safeInitDob,
-        role: userRole,
+        role: 1,
       })
 
       if (initProfErr) {
@@ -119,49 +118,35 @@ export default function DashboardPage() {
     initAuth()
   }, [router])
 
-  // 2. Fetch Reports Callback
+  // 2. Fetch User's Reports
   const fetchReports = useCallback(async () => {
     if (!user) return
     setReportsLoading(true)
     const supabase = createClient()
 
     try {
-      if (profile.role === 0) {
-        // Admin: fetch all reports
-        const { data, error } = await supabase
-          .from('reports')
-          .select('*, profiles:user_id(full_name, phone_number, email)')
-          .order('created_at', { ascending: false })
+      const { data, error } = await supabase
+        .from('reports')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
 
-        if (error) {
-          if (error.code === 'PGRST205' || error.message.includes('relation "public.reports" does not exist')) {
-            setTableMissingNotice(true)
-          }
-        } else if (data) {
-          setAllReports(data as ReportItem[])
+      if (error) {
+        if (
+          error.code === 'PGRST205' ||
+          error.message.includes('relation "public.reports" does not exist')
+        ) {
+          setTableMissingNotice(true)
         }
-      } else {
-        // Citizen: fetch only user's reports
-        const { data, error } = await supabase
-          .from('reports')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-
-        if (error) {
-          if (error.code === 'PGRST205' || error.message.includes('relation "public.reports" does not exist')) {
-            setTableMissingNotice(true)
-          }
-        } else if (data) {
-          setUserReports(data as ReportItem[])
-        }
+      } else if (data) {
+        setUserReports(data as ReportItem[])
       }
     } catch (err) {
       console.error('Failed to load reports:', err)
     } finally {
       setReportsLoading(false)
     }
-  }, [user, profile.role])
+  }, [user])
 
   useEffect(() => {
     if (user) {
@@ -234,8 +219,9 @@ export default function DashboardPage() {
         setUploadProgress(percent)
       })
 
-      // 2. Ensure profile exists in public.profiles to satisfy fk_reports_profiles
-      const safeDob = sanitizeDate(profile.dob) || sanitizeDate(effectiveUser.user_metadata?.date_of_birth)
+      // 2. Ensure profile exists in public.profiles to satisfy foreign keys
+      const safeDob =
+        sanitizeDate(profile.dob) || sanitizeDate(effectiveUser.user_metadata?.date_of_birth)
       const safeGender =
         profile.gender && profile.gender !== 'Not specified'
           ? profile.gender
@@ -248,11 +234,16 @@ export default function DashboardPage() {
         phone_number: profile.phone || effectiveUser.user_metadata?.phone_number || null,
         gender: safeGender,
         date_of_birth: safeDob,
-        role: profile.role ?? 1,
+        role: 1,
       })
 
       if (profErr) {
-        console.error('Profile upsert warning before report insert:', profErr.message, profErr.details, profErr.code)
+        console.error(
+          'Profile upsert warning before report insert:',
+          profErr.message,
+          profErr.details,
+          profErr.code
+        )
       }
 
       // 3. Save report record in Supabase
@@ -274,7 +265,10 @@ export default function DashboardPage() {
 
       if (error) {
         console.error('Supabase reports insert error details:', error)
-        if (error.code === 'PGRST205' || error.message?.includes('relation "public.reports" does not exist')) {
+        if (
+          error.code === 'PGRST205' ||
+          error.message?.includes('relation "public.reports" does not exist')
+        ) {
           setTableMissingNotice(true)
           const mockReport: ReportItem = {
             id: 'temp-' + Date.now(),
@@ -291,7 +285,9 @@ export default function DashboardPage() {
           }
           setUserReports((prev) => [mockReport, ...prev])
         } else {
-          throw new Error(error.message || error.details || error.hint || `Database error (${error.code})`)
+          throw new Error(
+            error.message || error.details || error.hint || `Database error (${error.code})`
+          )
         }
       } else if (data) {
         setUserReports((prev) => [data as ReportItem, ...prev])
@@ -316,57 +312,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Admin Verification Actions
-  const handleVerifyReport = async (reportId: string, status: 'accepted' | 'rejected', reason?: string) => {
-    setActionLoading(true)
-    const supabase = createClient()
-
-    try {
-      const { error } = await supabase
-        .from('reports')
-        .update({
-          status,
-          rejection_reason: status === 'rejected' ? reason || 'Declined by MDRRMO Administrator' : null,
-          verified_by: user?.id,
-          verified_at: new Date().toISOString(),
-        })
-        .eq('id', reportId)
-
-      if (error) {
-        alert(`Failed to update report: ${error.message}`)
-      } else {
-        setAllReports((prev) =>
-          prev.map((r) =>
-            r.id === reportId
-              ? {
-                  ...r,
-                  status,
-                  rejection_reason: status === 'rejected' ? reason || 'Declined by Administrator' : null,
-                  verified_by: user?.id,
-                  verified_at: new Date().toISOString(),
-                }
-              : r
-          )
-        )
-        setSelectedReportForAction(null)
-        setRejectReason('')
-      }
-    } catch (err) {
-      console.error('Verify error:', err)
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const handleAcceptReport = (id: string) => {
-    handleVerifyReport(id, 'accepted')
-  }
-
-  const handleRejectConfirm = () => {
-    if (!selectedReportForAction) return
-    handleVerifyReport(selectedReportForAction.id, 'rejected', rejectReason)
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50">
@@ -378,12 +323,10 @@ export default function DashboardPage() {
     )
   }
 
-  const isAdmin = profile.role === 0
-
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 text-zinc-900 pb-24 sm:pb-12">
       {/* Top Navigation Header */}
-      <Header isAdmin={isAdmin} signingOut={signingOut} onSignOut={handleSignOut} />
+      <Header isAdmin={false} signingOut={signingOut} onSignOut={handleSignOut} />
 
       {/* Database Schema Setup Notice */}
       {tableMissingNotice && (
@@ -392,9 +335,9 @@ export default function DashboardPage() {
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
               <div>
-                <span className="font-semibold">Supabase Database Setup Required:</span> Please execute the SQL
-                script in <code className="font-mono bg-amber-100 px-1 rounded">supabase_schema.sql</code> inside your
-                Supabase SQL Editor to create the <code className="font-mono bg-amber-100 px-1 rounded">reports</code> table.
+                <span className="font-semibold">Supabase Database Setup Required:</span> Please execute
+                the SQL script in <code className="font-mono bg-amber-100 px-1 rounded">supabase_schema.sql</code> inside
+                your Supabase SQL Editor to create the <code className="font-mono bg-amber-100 px-1 rounded">reports</code> table.
               </div>
             </div>
             <button
@@ -407,123 +350,93 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* =========================================================================
-          ADMIN VIEW (ROLE = 0)
-         ========================================================================= */}
-      {isAdmin ? (
-        <>
-          <AdminCommandCenter
-            allReports={allReports}
-            reportsLoading={reportsLoading}
-            adminFilter={adminFilter}
-            actionLoading={actionLoading}
-            onFilterChange={setAdminFilter}
-            onRefresh={fetchReports}
-            onAcceptReport={handleAcceptReport}
-            onRejectClick={(report) => setSelectedReportForAction(report)}
-          />
-
-          <AdminRejectModal
-            report={selectedReportForAction}
-            reason={rejectReason}
-            loading={actionLoading}
-            onReasonChange={setRejectReason}
-            onClose={() => setSelectedReportForAction(null)}
-            onConfirm={handleRejectConfirm}
-          />
-        </>
-      ) : (
-        /* =========================================================================
-            CITIZEN VIEW (ROLE = 1)
-           ========================================================================= */
-        <main className="max-w-5xl mx-auto w-full px-4 sm:px-6 pt-6 flex-1">
-          {/* Desktop/Tablet Tab Header */}
-          <div className="hidden sm:flex items-center justify-between border-b border-zinc-200 pb-4 mb-6">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setActiveTab('home')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  activeTab === 'home'
-                    ? 'bg-red-600 text-white shadow-xs'
-                    : 'text-zinc-600 hover:bg-zinc-100'
-                }`}
-              >
-                Home &amp; My Reports
-              </button>
-              <button
-                onClick={() => setActiveTab('report')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                  activeTab === 'report'
-                    ? 'bg-red-600 text-white shadow-xs'
-                    : 'text-zinc-600 hover:bg-zinc-100'
-                }`}
-              >
-                <AlertTriangle className="w-4 h-4" />
-                Report Incident
-              </button>
-              <button
-                onClick={() => setActiveTab('contacts')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all ${
-                  activeTab === 'contacts'
-                    ? 'bg-red-600 text-white shadow-xs'
-                    : 'text-zinc-600 hover:bg-zinc-100'
-                }`}
-              >
-                <PhoneCall className="w-4 h-4" />
-                Emergency Responders
-              </button>
-            </div>
-            <div className="text-xs text-zinc-500 font-medium">
-              Logged in as <span className="font-semibold text-zinc-800">{profile.fullName}</span>
-            </div>
+      {/* Citizen View */}
+      <main className="max-w-5xl mx-auto w-full px-4 sm:px-6 pt-6 flex-1">
+        {/* Desktop/Tablet Tab Header */}
+        <div className="hidden sm:flex items-center justify-between border-b border-zinc-200 pb-4 mb-6">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('home')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                activeTab === 'home'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : 'text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              Home &amp; My Reports
+            </button>
+            <button
+              onClick={() => setActiveTab('report')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all ${
+                activeTab === 'report'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : 'text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              Report Incident
+            </button>
+            <button
+              onClick={() => setActiveTab('contacts')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all ${
+                activeTab === 'contacts'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : 'text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              Emergency Responders
+            </button>
           </div>
+          <div className="text-xs text-zinc-500 font-medium">
+            Logged in as <span className="font-semibold text-zinc-800">{profile.fullName}</span>
+          </div>
+        </div>
 
-          {/* TAB 1: HOME & RECENT REPORTS */}
-          {activeTab === 'home' && (
-            <CitizenHomeTab
-              profile={profile}
-              userReports={userReports}
-              reportsLoading={reportsLoading}
-              onRefresh={fetchReports}
-              onNavigateToReport={() => setActiveTab('report')}
-              onSelectReport={(report) => setViewingReport(report)}
-            />
-          )}
+        {/* TAB 1: HOME & RECENT REPORTS */}
+        {activeTab === 'home' && (
+          <CitizenHomeTab
+            profile={profile}
+            userReports={userReports}
+            reportsLoading={reportsLoading}
+            onRefresh={fetchReports}
+            onNavigateToReport={() => setActiveTab('report')}
+            onSelectReport={(report) => setViewingReport(report)}
+          />
+        )}
 
-          {/* TAB 2: EMERGENCY INCIDENT REPORT */}
-          {activeTab === 'report' && (
-            <CitizenReportTab
-              reportTitle={reportTitle}
-              onTitleChange={setReportTitle}
-              reportCaption={reportCaption}
-              onCaptionChange={setReportCaption}
-              selectedFile={selectedFile}
-              filePreview={filePreview}
-              fileType={fileType}
-              onMediaSelected={handleMediaSelected}
-              onClearMedia={handleClearMedia}
-              gpsLocation={gpsLocation}
-              gpsLoading={gpsLoading}
-              gpsError={gpsError}
-              onRefreshGps={acquireGpsLocation}
-              uploadProgress={uploadProgress}
-              submittingReport={submittingReport}
-              reportError={reportError}
-              reportSuccess={reportSuccess}
-              onSubmit={handleSubmitReport}
-            />
-          )}
+        {/* TAB 2: EMERGENCY INCIDENT REPORT */}
+        {activeTab === 'report' && (
+          <CitizenReportTab
+            reportTitle={reportTitle}
+            onTitleChange={setReportTitle}
+            reportCaption={reportCaption}
+            onCaptionChange={setReportCaption}
+            selectedFile={selectedFile}
+            filePreview={filePreview}
+            fileType={fileType}
+            onMediaSelected={handleMediaSelected}
+            onClearMedia={handleClearMedia}
+            gpsLocation={gpsLocation}
+            gpsLoading={gpsLoading}
+            gpsError={gpsError}
+            onRefreshGps={acquireGpsLocation}
+            uploadProgress={uploadProgress}
+            submittingReport={submittingReport}
+            reportError={reportError}
+            reportSuccess={reportSuccess}
+            onSubmit={handleSubmitReport}
+          />
+        )}
 
-          {/* TAB 3: EMERGENCY RESPONDER CONTACTS */}
-          {activeTab === 'contacts' && <CitizenContactsTab />}
+        {/* TAB 3: EMERGENCY RESPONDER CONTACTS */}
+        {activeTab === 'contacts' && <CitizenContactsTab />}
 
-          {/* Mobile Bottom Floating Navigation */}
-          <BottomNav activeTab={activeTab} onSelectTab={setActiveTab} />
+        {/* Mobile Bottom Floating Navigation */}
+        <BottomNav activeTab={activeTab} onSelectTab={setActiveTab} />
 
-          {/* Report Detail Modal */}
-          <ReportDetailModal report={viewingReport} onClose={() => setViewingReport(null)} />
-        </main>
-      )}
+        {/* Report Detail Modal */}
+        <ReportDetailModal report={viewingReport} onClose={() => setViewingReport(null)} />
+      </main>
     </div>
   )
 }

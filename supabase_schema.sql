@@ -154,6 +154,14 @@ CREATE POLICY "Admins can update report status"
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 
+-- E. Admins can delete reports
+DROP POLICY IF EXISTS "Admins can delete reports" ON public.reports;
+CREATE POLICY "Admins can delete reports"
+  ON public.reports
+  FOR DELETE
+  TO authenticated
+  USING (public.is_admin());
+
 -- 7. Automatic trigger on new user registration (including phone_number)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER

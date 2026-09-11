@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="resqGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444" />
+      <stop offset="100%" stop-color="#b91c1c" />
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Background Canvas for Maskable Safe Zone -->
+  <rect width="512" height="512" rx="112" fill="url(#resqGrad)" />
+
+  <!-- Shield Base with Shadow -->
+  <path d="M256 70 L390 120 C390 270 330 380 256 430 C182 380 122 270 122 120 Z" 
+        fill="#ffffff" 
+        filter="url(#dropShadow)" />
+
+  <!-- Inner Red Shield Accent -->
+  <path d="M256 96 L368 138 C368 260 318 356 256 398 C194 356 144 260 144 138 Z" 
+        fill="url(#resqGrad)" />
+
+  <!-- White Medical Emergency Cross -->
+  <path d="M228 170 H284 V226 H340 V282 H284 V338 H228 V282 H172 V226 H228 Z" 
+        fill="#ffffff" 
+        stroke="#ffffff" 
+        stroke-width="4" 
+        stroke-linejoin="round" />
+
+  <!-- Center Core Ring / Radar Accent -->
+  <circle cx="256" cy="254" r="16" fill="#dc2626" />
+</svg>

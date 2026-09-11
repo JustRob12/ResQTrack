@@ -13,6 +13,7 @@ interface AdminCommandCenterProps {
   onRefresh: () => void
   onAcceptReport: (id: string) => void
   onRejectClick: (report: ReportItem) => void
+  onDeleteClick: (report: ReportItem) => void
 }
 
 export function AdminCommandCenter({
@@ -24,6 +25,7 @@ export function AdminCommandCenter({
   onRefresh,
   onAcceptReport,
   onRejectClick,
+  onDeleteClick,
 }: AdminCommandCenterProps) {
   const filteredReports = allReports.filter(
     (r) => (adminFilter === 'all' ? true : r.status === adminFilter)
@@ -114,6 +116,7 @@ export function AdminCommandCenter({
             actionLoading={actionLoading}
             onAccept={onAcceptReport}
             onRejectClick={onRejectClick}
+            onDeleteClick={onDeleteClick}
           />
         ))}
 
