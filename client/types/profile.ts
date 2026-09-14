@@ -1,4 +1,4 @@
-export type UserRole = 0 | 1 // 0 for Admin, 1 for Citizen/Normal People
+export type UserRole = 0 | 1 | 2 // 0 for Admin, 1 for Citizen/Normal People, 2 for Responder
 
 export interface UserProfile {
   id?: string

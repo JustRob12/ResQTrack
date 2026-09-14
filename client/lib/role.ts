@@ -7,6 +7,7 @@ import type { SupabaseClient, User } from '@supabase/supabase-js'
  * Role values:
  * - 0: Admin (MDRRMO Officer / Dispatcher)
  * - 1: Citizen / Normal people
+ * - 2: Emergency Responder (Rescue Unit)
  */
 export async function getUserRole(
   supabase: SupabaseClient,

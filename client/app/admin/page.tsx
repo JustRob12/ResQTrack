@@ -90,8 +90,14 @@ export default function AdminPage() {
   }, [user])
 
   useEffect(() => {
+    let active = true
     if (user) {
-      fetchReports()
+      Promise.resolve().then(() => {
+        if (active) fetchReports()
+      })
+    }
+    return () => {
+      active = false
     }
   }, [user, fetchReports])
 

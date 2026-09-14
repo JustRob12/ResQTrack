@@ -37,6 +37,8 @@ export function LoginForm() {
         const role = await getUserRole(supabase, data.session.user)
         if (role === 0) {
           router.push('/admin')
+        } else if (role === 2) {
+          router.push('/responder')
         } else {
           router.push('/dashboard')
         }

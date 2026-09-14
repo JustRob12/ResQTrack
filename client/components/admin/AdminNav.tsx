@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Radio, Map, BarChart3, FileText } from 'lucide-react'
+import { Radio, Map, BarChart3, FileText, Users } from 'lucide-react'
 
 interface AdminNavProps {
   pendingCount?: number
@@ -39,6 +39,13 @@ export function AdminNav({ pendingCount }: AdminNavProps) {
       shortName: 'Reports',
       href: '/admin/reports',
       icon: FileText,
+      exact: false,
+    },
+    {
+      name: 'Personnel & Roles',
+      shortName: 'Personnel',
+      href: '/admin/users',
+      icon: Users,
       exact: false,
     },
   ]

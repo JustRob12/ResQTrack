@@ -4,20 +4,19 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.heat'
-import type { ReportItem, ReportStatus } from '@/types/report'
+import { createClient } from '@/utils/supabase/client'
+import type { ReportItem, ReportStatus, ResponderLocationBroadcast } from '@/types/report'
 import {
   Flame,
   MapPin,
   Layers,
-  Eye,
-  ExternalLink,
-  ShieldAlert,
   Compass,
-  AlertTriangle,
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Car,
 } from 'lucide-react'
+import { getDrivingRoute } from '@/lib/routing'
 
 // Default Tarragona Center Coordinates
 const TARRAGONA_CENTER: [number, number] = [7.0425, 126.4485]
@@ -64,15 +63,72 @@ export default function IncidentLeafletMap({
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<L.Map | null>(null)
   const markersLayerRef = useRef<L.LayerGroup | null>(null)
-  const heatLayerRef = useRef<any>(null)
+  const respondersLayerRef = useRef<L.LayerGroup | null>(null)
+  const heatLayerRef = useRef<L.Layer | null>(null)
   const hazardLayerRef = useRef<L.LayerGroup | null>(null)
 
   // Filter & Display States
   const [viewMode, setViewMode] = useState<'both' | 'heatmap' | 'pins'>('both')
   const [statusFilter, setStatusFilter] = useState<'all' | ReportStatus>('all')
   const [showHazardZones, setShowHazardZones] = useState(true)
-  const [heatRadius, setHeatRadius] = useState<number>(28)
-  const [heatBlur, setHeatBlur] = useState<number>(18)
+  const [showResponders, setShowResponders] = useState(true)
+  const [heatRadius] = useState<number>(28)
+  const [heatBlur] = useState<number>(18)
+
+  // Real-time Responders Live Broadcast Map
+  const [broadcastResponders, setBroadcastResponders] = useState<Record<string, ResponderLocationBroadcast>>({})
+
+  // Derived responders from reports data
+  const reportResponders = useMemo(() => {
+    const res: Record<string, ResponderLocationBroadcast> = {}
+    reports.forEach((r) => {
+      if (
+        r.responder_id &&
+        r.responder_latitude &&
+        r.responder_longitude &&
+        (r.mission_status === 'en_route' || r.mission_status === 'on_scene')
+      ) {
+        res[r.responder_id] = {
+          report_id: r.id,
+          responder_id: r.responder_id,
+          responder_name: r.responder_name || 'Responder Unit',
+          responder_phone: r.responder_phone,
+          latitude: Number(r.responder_latitude),
+          longitude: Number(r.responder_longitude),
+          mission_status: r.mission_status,
+          updated_at: r.responder_updated_at || r.created_at,
+        }
+      }
+    })
+    return res
+  }, [reports])
+
+  // Combine report responders with realtime broadcast updates
+  const combinedResponders = useMemo(() => {
+    return { ...reportResponders, ...broadcastResponders }
+  }, [reportResponders, broadcastResponders])
+
+  // Realtime WebSocket Subscription: Receive live responder movement
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase.channel('resqtrack-dispatch')
+
+    channel
+      .on('broadcast', { event: 'responder_location' }, (payload) => {
+        const broadcast = payload.payload as ResponderLocationBroadcast
+        if (broadcast && broadcast.responder_id) {
+          setBroadcastResponders((prev) => ({
+            ...prev,
+            [broadcast.responder_id]: broadcast,
+          }))
+        }
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   // Filter reports that have valid coordinates
   const validReports = useMemo(() => {
@@ -91,7 +147,6 @@ export default function IncidentLeafletMap({
   // Heatmap data points: [lat, lng, intensity]
   const heatPoints = useMemo(() => {
     return validReports.map((r) => {
-      // Pending and accepted incidents have higher heat weight
       const weight = r.status === 'pending' ? 1.0 : r.status === 'accepted' ? 0.8 : 0.4
       return [Number(r.latitude), Number(r.longitude), weight] as [number, number, number]
     })
@@ -109,7 +164,7 @@ export default function IncidentLeafletMap({
       zoomControl: false,
     })
 
-    // Add OpenStreetMap tile layer
+    // OpenStreetMap tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | MDRRMO Tarragona',
@@ -119,9 +174,11 @@ export default function IncidentLeafletMap({
     // Layers groups
     const markersLayer = L.layerGroup().addTo(map)
     const hazardLayer = L.layerGroup().addTo(map)
+    const respondersLayer = L.layerGroup().addTo(map)
 
     markersLayerRef.current = markersLayer
     hazardLayerRef.current = hazardLayer
+    respondersLayerRef.current = respondersLayer
     mapInstanceRef.current = map
 
     return () => {
@@ -158,7 +215,7 @@ export default function IncidentLeafletMap({
     }
   }, [showHazardZones])
 
-  // Update Markers Layer
+  // Update Incident Markers Layer
   useEffect(() => {
     const map = mapInstanceRef.current
     const markersLayer = markersLayerRef.current
@@ -212,6 +269,12 @@ export default function IncidentLeafletMap({
             ? 'background:#fff1f2; color:#9f1239; border:1px solid #fecdd3;'
             : 'background:#fffbeb; color:#92400e; border:1px solid #fde68a;'
 
+        const responderBadge = report.responder_name
+          ? `<div style="margin-top: 6px; padding: 4px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 11px; color: #15803d; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+               <span>🚑 Responded by: ${report.responder_name}</span>
+             </div>`
+          : ''
+
         const popupContent = document.createElement('div')
         popupContent.className = 'p-1 max-w-xs text-zinc-900 font-sans'
         popupContent.innerHTML = `
@@ -226,9 +289,10 @@ export default function IncidentLeafletMap({
           <h4 style="font-size: 13px; font-weight: 700; color: #18181b; margin-bottom: 4px; line-height: 1.3;">
             ${report.title}
           </h4>
+          ${responderBadge}
           ${
             report.caption
-              ? `<p style="font-size: 11px; color: #52525b; margin-bottom: 8px; line-height: 1.4; max-height: 48px; overflow: hidden;">${report.caption}</p>`
+              ? `<p style="font-size: 11px; color: #52525b; margin-top: 6px; margin-bottom: 8px; line-height: 1.4; max-height: 48px; overflow: hidden;">${report.caption}</p>`
               : ''
           }
           ${
@@ -246,11 +310,148 @@ export default function IncidentLeafletMap({
           </div>
         `
 
+        if (onSelectReport) {
+          marker.on('click', () => onSelectReport(report))
+        }
+
         marker.bindPopup(popupContent)
         markersLayer.addLayer(marker)
       })
     }
-  }, [validReports, viewMode])
+  }, [validReports, viewMode, onSelectReport])
+
+  // Update Live Responders Layer (Real-time tracking pins and connection lines)
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    const respondersLayer = respondersLayerRef.current
+    if (!map || !respondersLayer) return
+
+    respondersLayer.clearLayers()
+
+    if (showResponders) {
+      const activeList = Object.values(combinedResponders).filter(
+        (res) => res.mission_status !== 'completed'
+      )
+
+      activeList.forEach((responder) => {
+        const respLat = responder.latitude
+        const respLng = responder.longitude
+
+        // Custom Vehicle Beacon Marker
+        const beaconHtml = `
+          <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+            <!-- Floating name tag badge -->
+            <div style="background: #0f172a; color: white; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 1px solid #334155; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
+              <span>${responder.responder_name} (${responder.mission_status === 'on_scene' ? 'On Scene' : 'En Route'})</span>
+            </div>
+            <!-- Vehicle circle with pulsing radar -->
+            <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+              <div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; background-color: #059669; opacity: 0.4; animation: ping 1.8s infinite;"></div>
+              <div style="width: 28px; height: 28px; border-radius: 50%; background-color: #059669; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3m9-12h4l3 5v7h-3m-9 0a2 2 0 1 0 4 0m8 0a2 2 0 1 0 4 0"/></svg>
+              </div>
+            </div>
+          </div>
+        `
+
+        const beaconIcon = L.divIcon({
+          className: 'resq-responder-beacon',
+          html: beaconHtml,
+          iconSize: [160, 60],
+          iconAnchor: [80, 52],
+          popupAnchor: [0, -48],
+        })
+
+        const marker = L.marker([respLat, respLng], { icon: beaconIcon })
+
+        // Find matching incident to draw connection line
+        const targetIncident = reports.find((r) => r.id === responder.report_id)
+
+        if (targetIncident && targetIncident.latitude && targetIncident.longitude) {
+          const incLat = Number(targetIncident.latitude)
+          const incLng = Number(targetIncident.longitude)
+
+          // Road route polyline (Casing + Active Route)
+          const casingLine = L.polyline([[respLat, respLng], [incLat, incLng]], {
+            color: '#064e3b',
+            weight: 5,
+            opacity: 0.35,
+            lineCap: 'round',
+            lineJoin: 'round',
+          })
+          const navLine = L.polyline([[respLat, respLng], [incLat, incLng]], {
+            color: '#059669',
+            weight: 3.5,
+            opacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round',
+          })
+          respondersLayer.addLayer(casingLine)
+          respondersLayer.addLayer(navLine)
+
+          // Fetch driving road route
+          getDrivingRoute(respLat, respLng, incLat, incLng)
+            .then((route) => {
+              if (route.coordinates && route.coordinates.length > 0) {
+                casingLine.setLatLngs(route.coordinates)
+                navLine.setLatLngs(route.coordinates)
+              }
+            })
+            .catch(() => {})
+        }
+
+        // Detailed Responder Popup
+        const navUrl = targetIncident?.latitude && targetIncident?.longitude
+          ? `https://www.google.com/maps/dir/?api=1&origin=${respLat},${respLng}&destination=${targetIncident.latitude},${targetIncident.longitude}&travelmode=driving`
+          : null
+
+        const popupContent = document.createElement('div')
+        popupContent.className = 'p-1 max-w-xs text-zinc-900 font-sans'
+        popupContent.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="font-size: 10px; font-weight: 800; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;">
+              Active Field Responder
+            </span>
+          </div>
+          <h4 style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 2px;">
+            ${responder.responder_name}
+          </h4>
+          <div style="font-size: 11px; color: #64748b; margin-bottom: 6px;">
+            Status: <span style="font-weight: 700; color: #059669; text-transform: capitalize;">${responder.mission_status.replace('_', ' ')}</span>
+          </div>
+          ${
+            responder.responder_phone
+              ? `<div style="font-size: 11px; margin-bottom: 6px;">
+                  <a href="tel:${responder.responder_phone}" style="color: #dc2626; font-weight: 700; text-decoration: none;">
+                    📞 ${responder.responder_phone}
+                  </a>
+                 </div>`
+              : ''
+          }
+          ${
+            targetIncident
+              ? `<div style="font-size: 11px; background: #f8fafc; padding: 6px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 6px;">
+                   <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block;">Responding to</span>
+                   <span style="font-weight: 700; color: #1e293b;">${targetIncident.title}</span>
+                 </div>`
+              : ''
+          }
+          <div style="font-size: 10px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <span>${respLat.toFixed(4)}, ${respLng.toFixed(4)}</span>
+            ${
+              navUrl
+                ? `<a href="${navUrl}" target="_blank" rel="noreferrer" style="color: #2563eb; font-weight: 700; text-decoration: none;">Google Maps ↗</a>`
+                : ''
+            }
+          </div>
+        `
+
+        marker.bindPopup(popupContent)
+        respondersLayer.addLayer(marker)
+      })
+    }
+  }, [combinedResponders, showResponders, reports])
 
   // Update Heatmap Layer
   useEffect(() => {
@@ -264,8 +465,9 @@ export default function IncidentLeafletMap({
     }
 
     if (viewMode === 'both' || viewMode === 'heatmap') {
-      if (heatPoints.length > 0 && (L as any).heatLayer) {
-        const heat = (L as any).heatLayer(heatPoints, {
+      const leafletHeat = (L as unknown as { heatLayer: (pts: [number, number, number][], opts: unknown) => L.Layer }).heatLayer
+      if (heatPoints.length > 0 && leafletHeat) {
+        const heat = leafletHeat(heatPoints, {
           radius: heatRadius,
           blur: heatBlur,
           maxZoom: 16,
@@ -290,10 +492,20 @@ export default function IncidentLeafletMap({
     const map = mapInstanceRef.current
     if (!map) return
 
-    if (validReports.length > 0) {
-      const bounds = L.latLngBounds(
-        validReports.map((r) => [Number(r.latitude), Number(r.longitude)])
-      )
+    const points: [number, number][] = validReports.map((r) => [
+      Number(r.latitude),
+      Number(r.longitude),
+    ])
+
+    // Include active responders in bounding box
+    Object.values(combinedResponders).forEach((res) => {
+      if (res.mission_status !== 'completed') {
+        points.push([res.latitude, res.longitude])
+      }
+    })
+
+    if (points.length > 0) {
+      const bounds = L.latLngBounds(points)
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 })
     } else {
       map.setView(TARRAGONA_CENTER, TARRAGONA_DEFAULT_ZOOM)
@@ -308,6 +520,10 @@ export default function IncidentLeafletMap({
 
   const handleZoomIn = () => mapInstanceRef.current?.zoomIn()
   const handleZoomOut = () => mapInstanceRef.current?.zoomOut()
+
+  const activeRespondersCount = Object.values(combinedResponders).filter(
+    (r) => r.mission_status !== 'completed'
+  ).length
 
   return (
     <div className="relative w-full h-[540px] sm:h-[680px] rounded-2xl overflow-hidden border border-zinc-200 shadow-sm bg-zinc-100">
@@ -353,21 +569,37 @@ export default function IncidentLeafletMap({
           </button>
         </div>
 
-        {/* Status Filter Pill */}
-        <div className="pointer-events-auto bg-white/95 backdrop-blur-md p-1.5 rounded-xl border border-zinc-200 shadow-md flex items-center gap-1">
-          {(['all', 'pending', 'accepted', 'rejected'] as const).map((st) => (
-            <button
-              key={st}
-              onClick={() => setStatusFilter(st)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase transition-all ${
-                statusFilter === st
-                  ? 'bg-red-600 text-white shadow-xs'
-                  : 'text-zinc-600 hover:bg-zinc-100'
-              }`}
-            >
-              {st}
-            </button>
-          ))}
+        {/* Live Responders Filter & Status Filter Pill */}
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          {/* Responder Layer Toggle */}
+          <button
+            onClick={() => setShowResponders(!showResponders)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md border ${
+              showResponders
+                ? 'bg-emerald-600 text-white border-emerald-700'
+                : 'bg-white/95 backdrop-blur-md text-zinc-600 border-zinc-200 hover:bg-zinc-50'
+            }`}
+          >
+            <Car className="w-3.5 h-3.5" />
+            <span>Live Responders ({activeRespondersCount})</span>
+          </button>
+
+          {/* Status Filter Pill */}
+          <div className="bg-white/95 backdrop-blur-md p-1.5 rounded-xl border border-zinc-200 shadow-md flex items-center gap-1">
+            {(['all', 'pending', 'accepted', 'rejected'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase transition-all ${
+                  statusFilter === st
+                    ? 'bg-red-600 text-white shadow-xs'
+                    : 'text-zinc-600 hover:bg-zinc-100'
+                }`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -389,7 +621,7 @@ export default function IncidentLeafletMap({
         </button>
         <button
           onClick={handleFitBounds}
-          title="Fit All Incidents"
+          title="Fit All Incidents & Responders"
           className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-zinc-700 hover:bg-zinc-50 transition-colors"
         >
           <Maximize2 className="w-4 h-4" />
@@ -403,75 +635,15 @@ export default function IncidentLeafletMap({
         </button>
       </div>
 
-      {/* Bottom Floating Legend & Metric Bar */}
-      <div className="absolute bottom-4 left-4 right-4 z-10 pointer-events-none flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
-        {/* Heatmap & Pin Legend Card */}
-        <div className="pointer-events-auto bg-white/95 backdrop-blur-md p-3.5 rounded-xl border border-zinc-200 shadow-md text-xs space-y-2 max-w-sm">
-          <div className="font-bold text-zinc-800 flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
-              <Flame className="w-3.5 h-3.5 text-red-600" />
-              Incident Density &amp; Hazard Key
-            </span>
-            <span className="text-[10px] text-zinc-500 font-medium">
-              {validReports.length} Mapped
-            </span>
-          </div>
-
-          {/* Gradient Density Bar */}
-          <div className="space-y-1">
-            <div className="h-2 w-full rounded-full bg-gradient-to-r from-sky-500 via-emerald-500 via-amber-500 to-red-600"></div>
-            <div className="flex justify-between text-[10px] text-zinc-500 font-semibold">
-              <span>Low Density</span>
-              <span>Moderate</span>
-              <span className="text-red-600">Critical Hotspot</span>
-            </div>
-          </div>
-
-          {/* Status Pin Indicators */}
-          <div className="flex items-center gap-3 pt-1 text-[11px] text-zinc-600 border-t border-zinc-100">
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Pending
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Dispatched
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Dismissed
-            </span>
-          </div>
-
-          {/* Hazard Zones Toggle */}
-          <div className="pt-1 flex items-center justify-between text-[11px] border-t border-zinc-100">
-            <label className="flex items-center gap-1.5 cursor-pointer select-none text-zinc-700 font-medium">
-              <input
-                type="checkbox"
-                checked={showHazardZones}
-                onChange={(e) => setShowHazardZones(e.target.checked)}
-                className="rounded text-red-600 focus:ring-red-500 w-3.5 h-3.5"
-              />
-              Show Tarragona Risk Corridors
-            </label>
-          </div>
+      {/* Bottom Live Tracking Status Bar */}
+      {activeRespondersCount > 0 && (
+        <div className="absolute bottom-4 left-4 z-10 bg-zinc-900/90 backdrop-blur-md text-white px-3.5 py-2 rounded-xl text-xs flex items-center gap-2.5 shadow-lg border border-zinc-800">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+          <span className="font-bold">
+            {activeRespondersCount} Active Responder{activeRespondersCount > 1 ? 's' : ''} En Route / In Field
+          </span>
         </div>
-
-        {/* Heatmap Radius Slider Panel (when heatmap is visible) */}
-        {(viewMode === 'both' || viewMode === 'heatmap') && (
-          <div className="pointer-events-auto bg-white/95 backdrop-blur-md p-3 rounded-xl border border-zinc-200 shadow-md text-xs space-y-1.5">
-            <div className="flex justify-between text-zinc-700 font-semibold">
-              <span>Heat Radius</span>
-              <span className="font-mono text-red-600">{heatRadius}px</span>
-            </div>
-            <input
-              type="range"
-              min="15"
-              max="50"
-              value={heatRadius}
-              onChange={(e) => setHeatRadius(Number(e.target.value))}
-              className="w-36 accent-red-600 cursor-pointer"
-            />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   )
 }

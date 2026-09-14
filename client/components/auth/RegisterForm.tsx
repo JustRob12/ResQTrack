@@ -67,7 +67,7 @@ export function RegisterForm() {
 
     try {
       const supabase = createClient()
-      const DEFAULT_ROLE = 1 // 1 for citizen / normal people, 0 for admin
+      const DEFAULT_ROLE = 1 // All users automatically register as Citizen (Role 1). Admin assigns Responder (Role 2) or Admin (Role 0)
 
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
@@ -119,7 +119,7 @@ export function RegisterForm() {
         }
       }
 
-      setSuccessMessage('Registration successful! Directing to dashboard...')
+      setSuccessMessage('Registration successful! Directing to citizen dashboard...')
       setTimeout(() => {
         router.push('/dashboard')
         router.refresh()
@@ -136,7 +136,7 @@ export function RegisterForm() {
       <div className="mb-5">
         <h2 className="text-xl font-bold text-zinc-900">Create your account</h2>
         <p className="text-xs sm:text-sm text-zinc-500 mt-1">
-          Register as a citizen or local responder with MDRRMO Tarragona.
+          Register as a citizen with MDRRMO Tarragona.
         </p>
       </div>
 

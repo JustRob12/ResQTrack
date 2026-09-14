@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   phone_number TEXT,
   gender TEXT,
   date_of_birth DATE,
-  role INTEGER NOT NULL DEFAULT 1, -- 0 for admin, 1 for normal people
+  role INTEGER NOT NULL DEFAULT 1, -- 0 for admin, 1 for normal people (citizen), 2 for responder
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -48,6 +48,20 @@ AS $$
   );
 $$;
 
+-- Helper: Security Definer function to check responder or admin role
+CREATE OR REPLACE FUNCTION public.is_responder_or_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND (role = 2 OR role = 0)
+  );
+$$;
+
 -- 4. RLS Policies on profiles
 DROP POLICY IF EXISTS "Users can view their own profile" ON public.profiles;
 CREATE POLICY "Users can view their own profile"
@@ -71,11 +85,20 @@ CREATE POLICY "Users can update their own profile"
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Admins can update all profiles" ON public.profiles;
+CREATE POLICY "Admins can update all profiles"
+  ON public.profiles
+  FOR UPDATE
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
 DROP POLICY IF EXISTS "Allow insert profile" ON public.profiles;
 CREATE POLICY "Allow insert profile"
   ON public.profiles
   FOR INSERT
   TO authenticated
+  USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
 -- 5. Create the `reports` table for incident reports
@@ -93,9 +116,33 @@ CREATE TABLE IF NOT EXISTS public.reports (
   rejection_reason TEXT,
   verified_by UUID REFERENCES auth.users(id),
   verified_at TIMESTAMPTZ,
+  -- Role 2 Responder Tracking & Completion Proof
+  responder_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  responder_name TEXT,
+  responder_phone TEXT,
+  mission_status TEXT DEFAULT 'pending', -- 'pending', 'dispatched', 'en_route', 'on_scene', 'completed'
+  responder_latitude DOUBLE PRECISION,
+  responder_longitude DOUBLE PRECISION,
+  responder_updated_at TIMESTAMPTZ,
+  resolution_image_url TEXT,
+  resolution_images TEXT[],
+  resolution_notes TEXT,
+  resolved_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Guarantee columns exist if table was already created in an earlier migration
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS responder_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS responder_name TEXT;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS responder_phone TEXT;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS mission_status TEXT DEFAULT 'pending';
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS responder_latitude DOUBLE PRECISION;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS responder_longitude DOUBLE PRECISION;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS responder_updated_at TIMESTAMPTZ;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS resolution_image_url TEXT;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS resolution_images TEXT[];
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS resolution_notes TEXT;
+ALTER TABLE public.reports ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
 
 -- Foreign key to profiles for joined queries
 DO $$
@@ -161,6 +208,39 @@ CREATE POLICY "Admins can delete reports"
   FOR DELETE
   TO authenticated
   USING (public.is_admin());
+
+-- F. Responders can view accepted (dispatched) reports and assigned reports
+DROP POLICY IF EXISTS "Responders can view accepted reports" ON public.reports;
+CREATE POLICY "Responders can view accepted reports"
+  ON public.reports
+  FOR SELECT
+  TO authenticated
+  USING (
+    public.is_responder_or_admin() 
+    OR status = 'accepted' 
+    OR responder_id = auth.uid()
+  );
+
+-- G. Responders can update reports they are responding to (location, status, completion proof)
+DROP POLICY IF EXISTS "Responders can update assigned reports" ON public.reports;
+CREATE POLICY "Responders can update assigned reports"
+  ON public.reports
+  FOR UPDATE
+  TO authenticated
+  USING (
+    public.is_admin()
+    OR (
+      public.is_responder_or_admin()
+      AND (responder_id IS NULL OR responder_id = auth.uid())
+    )
+  )
+  WITH CHECK (
+    public.is_admin()
+    OR (
+      public.is_responder_or_admin()
+      AND (responder_id IS NULL OR responder_id = auth.uid())
+    )
+  );
 
 -- 7. Automatic trigger on new user registration (including phone_number)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -230,6 +310,9 @@ SELECT
   COALESCE((raw_user_meta_data->>'role')::integer, 1)
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;
+
+-- Explicitly reload PostgREST schema cache so new columns are immediately available
+NOTIFY pgrst, 'reload schema';
 
 -- ==============================================================================
 -- HELPER: Promote a user to Admin (Role: 0)

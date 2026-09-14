@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/utils/supabase/client'
@@ -18,8 +18,19 @@ import {
   AlertTriangle,
   X,
   Compass,
+  CheckCircle2,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
+
+export const TARRAGONA_BARANGAYS = [
+  { name: 'Central (Poblacion / Court & Gym)', lat: 7.0435, lng: 126.449 },
+  { name: 'Cabagayan', lat: 7.065, lng: 126.471 },
+  { name: 'Tomoang', lat: 7.078, lng: 126.435 },
+  { name: 'Lucatan', lat: 6.985, lng: 126.431 },
+  { name: 'Tagabakid', lat: 7.012, lng: 126.398 },
+  { name: 'Jovellar', lat: 7.125, lng: 126.485 },
+  { name: 'Dadong', lat: 7.031, lng: 126.385 },
+]
 
 // Dynamic import with SSR disabled to prevent Leaflet window errors
 const IncidentLeafletMap = dynamic(
@@ -104,8 +115,14 @@ export default function AdminMapPage() {
   }, [user])
 
   useEffect(() => {
+    let active = true
     if (user) {
-      fetchReports()
+      Promise.resolve().then(() => {
+        if (active) fetchReports()
+      })
+    }
+    return () => {
+      active = false
     }
   }, [user, fetchReports])
 
@@ -114,6 +131,49 @@ export default function AdminMapPage() {
     const supabase = createClient()
     await supabase.auth.signOut()
     router.replace('/login')
+  }
+
+  // Unmapped Reports & Coordinates Assignment
+  const [assigningId, setAssigningId] = useState<string | null>(null)
+  const [assignSuccess, setAssignSuccess] = useState<string | null>(null)
+
+  const unmappedReports = useMemo(() => {
+    return allReports.filter(
+      (r) => r.latitude === null || r.longitude === null || isNaN(Number(r.latitude))
+    )
+  }, [allReports])
+
+  const handleAssignCoordinates = async (
+    reportId: string,
+    lat: number,
+    lng: number,
+    barangayName: string
+  ) => {
+    setAssigningId(reportId)
+    const supabase = createClient()
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .update({
+          latitude: lat,
+          longitude: lng,
+        })
+        .eq('id', reportId)
+
+      if (error) {
+        alert(`Failed to assign coordinates: ${error.message}`)
+      } else {
+        setAllReports((prev) =>
+          prev.map((r) => (r.id === reportId ? { ...r, latitude: lat, longitude: lng } : r))
+        )
+        setAssignSuccess(`Incident coordinates set to ${barangayName} (${lat}, ${lng})!`)
+        setTimeout(() => setAssignSuccess(null), 4000)
+      }
+    } catch (err) {
+      console.error('Assign coordinates error:', err)
+    } finally {
+      setAssigningId(null)
+    }
   }
 
   // Summary Metrics
@@ -134,6 +194,11 @@ export default function AdminMapPage() {
       r.latitude !== null &&
       r.longitude !== null &&
       !isNaN(Number(r.latitude))
+  ).length
+  const activeResponders = allReports.filter(
+    (r) =>
+      r.responder_name &&
+      (r.mission_status === 'en_route' || r.mission_status === 'on_scene')
   ).length
   const coveragePercent =
     totalReports > 0 ? Math.round((mappedReports / totalReports) * 100) : 100
@@ -207,7 +272,7 @@ export default function AdminMapPage() {
           </div>
 
           {/* Quick Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-zinc-100 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-5 pt-4 border-t border-zinc-100 text-xs">
             <div className="p-3 bg-zinc-50 rounded-lg">
               <span className="text-zinc-400 block font-medium">Mapped Incidents</span>
               <span className="text-lg font-bold text-zinc-800">
@@ -222,12 +287,93 @@ export default function AdminMapPage() {
               <span className="text-emerald-700 block font-medium">Dispatched Operations</span>
               <span className="text-lg font-bold text-emerald-900">{dispatchedMapped}</span>
             </div>
+            <div className="p-3 bg-purple-50 rounded-lg">
+              <span className="text-purple-700 block font-medium">Live Field Responders</span>
+              <span className="text-lg font-bold text-purple-900">{activeResponders} active</span>
+            </div>
             <div className="p-3 bg-sky-50 rounded-lg">
-              <span className="text-sky-700 block font-medium">GPS Coordinate Coverage</span>
+              <span className="text-sky-700 block font-medium">Coordinate Coverage</span>
               <span className="text-lg font-bold text-sky-900">{coveragePercent}%</span>
             </div>
           </div>
         </div>
+
+        {/* Success alert after coordinates assigned */}
+        {assignSuccess && (
+          <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2.5 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{assignSuccess}</span>
+          </div>
+        )}
+
+        {/* Unmapped Incidents (Missing GPS) Manager Panel */}
+        {unmappedReports.length > 0 && (
+          <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-amber-950 font-bold text-sm">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  {unmappedReports.length} Incident{unmappedReports.length > 1 ? 's' : ''} Missing GPS Coordinates (Unmapped)
+                </span>
+              </div>
+              <span className="text-xs text-amber-800 font-medium">
+                Submitted without GPS. Click a Barangay below to plot it immediately on the map:
+              </span>
+            </div>
+
+            <div className="space-y-2.5">
+              {unmappedReports.map((report: ReportItem) => {
+                const isBusy = assigningId === report.id
+                return (
+                  <div
+                    key={report.id}
+                    className="bg-white p-3.5 sm:p-4 rounded-xl border border-amber-200 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-zinc-900 text-sm">{report.title}</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                          Needs Location
+                        </span>
+                      </div>
+                      <div className="text-zinc-500 mt-1 flex flex-wrap items-center gap-2">
+                        <span>
+                          Reporter: <strong className="text-zinc-700">{report.profiles?.full_name || 'Citizen'}</strong>
+                        </span>
+                        {report.caption && (
+                          <span>
+                            &bull; Landmarks: <em className="text-zinc-700 font-semibold">&ldquo;{report.caption}&rdquo;</em>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quick Barangay Assignment Pill Buttons */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-zinc-500 font-bold text-[11px] mr-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-red-600" />
+                        <span>Plot at:</span>
+                      </span>
+                      {TARRAGONA_BARANGAYS.map((b) => (
+                        <button
+                          key={b.name}
+                          type="button"
+                          onClick={() => handleAssignCoordinates(report.id, b.lat, b.lng, b.name)}
+                          disabled={isBusy}
+                          className="px-2.5 py-1 rounded-lg bg-zinc-50 hover:bg-red-50 hover:border-red-300 hover:text-red-700 text-zinc-700 font-semibold text-[11px] transition-all border border-zinc-200 flex items-center gap-1 disabled:opacity-50 cursor-pointer shadow-2xs"
+                          title={`Plot coordinates to ${b.name} (${b.lat}, ${b.lng})`}
+                        >
+                          {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                          <span>{b.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Interactive Leaflet Map with Heatmap */}
         <IncidentLeafletMap reports={allReports} />

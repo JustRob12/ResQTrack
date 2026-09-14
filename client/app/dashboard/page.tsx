@@ -83,6 +83,12 @@ export default function DashboardPage() {
         return
       }
 
+      // When the user's role is 2, direct them to the dedicated responder page
+      if (userRole === 2) {
+        router.replace('/responder')
+        return
+      }
+
       const meta = currentUser.user_metadata || {}
       const loadedProfile: UserProfile = {
         fullName: meta.full_name || currentUser.email?.split('@')[0] || 'Citizen',
@@ -149,8 +155,14 @@ export default function DashboardPage() {
   }, [user])
 
   useEffect(() => {
+    let active = true
     if (user) {
-      fetchReports()
+      Promise.resolve().then(() => {
+        if (active) fetchReports()
+      })
+    }
+    return () => {
+      active = false
     }
   }, [user, fetchReports])
 

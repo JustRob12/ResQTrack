@@ -3,12 +3,29 @@
 import { ShieldAlert, LogOut } from 'lucide-react'
 
 interface HeaderProps {
-  isAdmin: boolean
+  isAdmin?: boolean
+  isResponder?: boolean
+  role?: 0 | 1 | 2
   signingOut: boolean
   onSignOut: () => void
 }
 
-export function Header({ isAdmin, signingOut, onSignOut }: HeaderProps) {
+export function Header({ isAdmin, isResponder, role, signingOut, onSignOut }: HeaderProps) {
+  const currentRole = role !== undefined ? role : isAdmin ? 0 : isResponder ? 2 : 1
+  const badgeLabel =
+    currentRole === 0
+      ? 'ADMINISTRATOR'
+      : currentRole === 2
+      ? 'MDRRMO RESPONDER'
+      : 'MDRRMO CITIZEN'
+
+  const badgeClass =
+    currentRole === 0
+      ? 'bg-zinc-900 text-white'
+      : currentRole === 2
+      ? 'bg-emerald-600 text-white'
+      : 'bg-red-50 text-red-700'
+
   return (
     <header className="bg-white border-b border-zinc-200 sticky top-0 z-30 shadow-xs">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -19,12 +36,8 @@ export function Header({ isAdmin, signingOut, onSignOut }: HeaderProps) {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-lg font-black text-red-600 tracking-tight">ResQTrack</span>
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                  isAdmin ? 'bg-zinc-900 text-white' : 'bg-red-50 text-red-700'
-                }`}
-              >
-                {isAdmin ? 'ADMINISTRATOR' : 'MDRRMO CITIZEN'}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${badgeClass}`}>
+                {badgeLabel}
               </span>
             </div>
             <p className="text-[11px] text-zinc-500 hidden sm:block">

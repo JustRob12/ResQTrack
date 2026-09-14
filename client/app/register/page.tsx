@@ -22,6 +22,8 @@ export default function RegisterPage() {
         const role = await getUserRole(supabase, session.user)
         if (role === 0) {
           router.replace('/admin')
+        } else if (role === 2) {
+          router.replace('/responder')
         } else {
           router.replace('/dashboard')
         }
