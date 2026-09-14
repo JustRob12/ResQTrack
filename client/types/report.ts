@@ -28,4 +28,5 @@ export interface GpsLocation {
   latitude: number
   longitude: number
   accuracy: number
+  source?: 'satellite' | 'network' | 'cached'
 }

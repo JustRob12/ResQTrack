@@ -38,6 +38,7 @@ interface CitizenReportTabProps {
   gpsLocation: GpsLocation | null
   gpsLoading: boolean
   gpsError: string | null
+  gpsStatus?: string | null
   onRefreshGps: () => void
   uploadProgress: number | null
   submittingReport: boolean
@@ -59,6 +60,7 @@ export function CitizenReportTab({
   gpsLocation,
   gpsLoading,
   gpsError,
+  gpsStatus,
   onRefreshGps,
   uploadProgress,
   submittingReport,
@@ -244,6 +246,7 @@ export function CitizenReportTab({
             gpsLocation={gpsLocation}
             gpsLoading={gpsLoading}
             gpsError={gpsError}
+            gpsStatus={gpsStatus}
             onRefresh={onRefreshGps}
           />
 

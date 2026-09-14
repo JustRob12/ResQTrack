@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { uploadToCloudinary } from '@/lib/cloudinary'
@@ -53,7 +53,7 @@ export default function DashboardPage() {
   const [reportSuccess, setReportSuccess] = useState(false)
 
   // GPS Location Hook
-  const { gpsLocation, gpsLoading, gpsError, acquireGpsLocation } = useGpsLocation()
+  const { gpsLocation, gpsLoading, gpsError, gpsStatus, acquireGpsLocation } = useGpsLocation()
 
   // Citizen Viewing Detail Modal
   const [viewingReport, setViewingReport] = useState<ReportItem | null>(null)
@@ -154,10 +154,17 @@ export default function DashboardPage() {
     }
   }, [user, fetchReports])
 
-  // Auto acquire GPS when navigating to Report tab if not yet acquired
+  // Auto acquire GPS once when navigating to Report tab if not yet acquired
+  const lastTabRef = useRef<CitizenTab>(activeTab)
+
   useEffect(() => {
-    if (activeTab === 'report' && !gpsLocation && !gpsLoading) {
-      acquireGpsLocation()
+    if (activeTab === 'report' && lastTabRef.current !== 'report') {
+      lastTabRef.current = 'report'
+      if (!gpsLocation && !gpsLoading) {
+        acquireGpsLocation()
+      }
+    } else if (activeTab !== 'report') {
+      lastTabRef.current = activeTab
     }
   }, [activeTab, gpsLocation, gpsLoading, acquireGpsLocation])
 
@@ -419,6 +426,7 @@ export default function DashboardPage() {
             gpsLocation={gpsLocation}
             gpsLoading={gpsLoading}
             gpsError={gpsError}
+            gpsStatus={gpsStatus}
             onRefreshGps={acquireGpsLocation}
             uploadProgress={uploadProgress}
             submittingReport={submittingReport}
