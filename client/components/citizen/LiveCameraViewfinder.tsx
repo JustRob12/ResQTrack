@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Square,
   Circle,
+  ImageIcon,
 } from 'lucide-react'
 
 interface LiveCameraViewfinderProps {
@@ -24,6 +25,7 @@ interface LiveCameraViewfinderProps {
   onStartRecordVideo: () => void
   onStopRecordVideo: () => void
   onRetry: () => void
+  onUploadImage?: () => void
 }
 
 export function LiveCameraViewfinder({
@@ -40,6 +42,7 @@ export function LiveCameraViewfinder({
   onStartRecordVideo,
   onStopRecordVideo,
   onRetry,
+  onUploadImage,
 }: LiveCameraViewfinderProps) {
   return (
     <div className="relative rounded-2xl overflow-hidden bg-black aspect-4/3 sm:aspect-16/9 w-full max-w-lg mx-auto flex items-center justify-center shadow-md">
@@ -64,18 +67,28 @@ export function LiveCameraViewfinder({
         <div className="absolute inset-0 bg-black/90 p-4 flex flex-col items-center justify-center text-center text-white gap-3 z-20">
           <AlertTriangle className="w-8 h-8 text-amber-500" />
           <p className="text-xs text-zinc-300 max-w-xs">{cameraError}</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
               onClick={onRetry}
-              className="px-3 py-1.5 rounded-lg bg-zinc-800 text-xs font-semibold hover:bg-zinc-700"
+              className="px-3 py-1.5 rounded-lg bg-zinc-800 text-xs font-semibold hover:bg-zinc-700 transition-colors"
             >
-              Retry
+              Retry Camera
             </button>
+            {onUploadImage && (
+              <button
+                type="button"
+                onClick={onUploadImage}
+                className="px-3.5 py-1.5 rounded-lg bg-red-600 text-xs font-semibold hover:bg-red-700 flex items-center gap-1.5 transition-colors"
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                Upload Image
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-lg bg-red-600 text-xs font-semibold hover:bg-red-700"
+              className="px-3 py-1.5 rounded-lg bg-zinc-700 text-xs font-semibold hover:bg-zinc-600 transition-colors"
             >
               Close
             </button>
@@ -114,7 +127,18 @@ export function LiveCameraViewfinder({
       </div>
 
       {/* Bottom Shutter / Record Controls */}
-      <div className="absolute bottom-4 inset-x-0 flex flex-col items-center justify-center gap-2 pointer-events-auto z-10 px-4">
+      <div className="absolute bottom-4 inset-x-0 flex items-center justify-center gap-6 pointer-events-auto z-10 px-6">
+        {onUploadImage && mode === 'photo' && (
+          <button
+            type="button"
+            onClick={onUploadImage}
+            title="Upload Image from Device"
+            className="w-11 h-11 rounded-full bg-black/60 backdrop-blur-xs text-white hover:bg-black/80 border border-white/20 flex flex-col items-center justify-center transition-transform active:scale-95 shadow-md"
+          >
+            <ImageIcon className="w-4 h-4" />
+          </button>
+        )}
+
         {mode === 'photo' && (
           <div className="flex flex-col items-center">
             <button
@@ -122,12 +146,23 @@ export function LiveCameraViewfinder({
               onClick={onCapturePhoto}
               className="w-16 h-16 rounded-full border-4 border-white bg-red-600 hover:bg-red-700 active:scale-90 transition-all shadow-lg flex items-center justify-center"
             >
-              <div className="w-10 h-10 rounded-full bg-white/20" />
+              <div className="w-10 h-10 rounded-full bg-white/25" />
             </button>
-            <span className="text-[11px] font-bold text-white drop-shadow-md mt-1.5">
-              Tap to Capture Photo
+            <span className="text-[10px] font-bold text-white drop-shadow-md mt-1">
+              Tap to Capture
             </span>
           </div>
+        )}
+
+        {onUploadImage && mode === 'photo' && (
+          <button
+            type="button"
+            onClick={onSwitchFacing}
+            title="Flip Camera"
+            className="w-11 h-11 rounded-full bg-black/60 backdrop-blur-xs text-white hover:bg-black/80 border border-white/20 flex flex-col items-center justify-center transition-transform active:scale-95 shadow-md"
+          >
+            <SwitchCamera className="w-4 h-4" />
+          </button>
         )}
 
         {mode === 'video' && (

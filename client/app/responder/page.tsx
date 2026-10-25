@@ -28,6 +28,7 @@ import {
   User as UserIcon,
   Compass,
   Car,
+  LogOut,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 
@@ -668,10 +669,18 @@ export default function ResponderPage() {
             <div className="pt-4 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
               <span>Account Email: {profile.email}</span>
               <button
+                type="button"
                 onClick={handleSignOut}
-                className="text-red-600 font-bold hover:underline"
+                disabled={signingOut}
+                title={signingOut ? 'Signing out...' : 'Sign Out'}
+                aria-label="Sign Out"
+                className="p-2 rounded-lg border border-zinc-200 text-zinc-600 hover:text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors disabled:opacity-50 flex items-center justify-center shadow-2xs cursor-pointer"
               >
-                Sign Out
+                {signingOut ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+                ) : (
+                  <LogOut className="w-4 h-4 text-red-600" />
+                )}
               </button>
             </div>
           </div>

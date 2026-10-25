@@ -14,6 +14,7 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Minimize2,
   Car,
 } from 'lucide-react'
 import { getDrivingRoute } from '@/lib/routing'
@@ -54,11 +55,15 @@ const TARRAGONA_HAZARD_ZONES = [
 interface IncidentLeafletMapProps {
   reports: ReportItem[]
   onSelectReport?: (report: ReportItem) => void
+  className?: string
+  floatingHeader?: React.ReactNode
 }
 
 export default function IncidentLeafletMap({
   reports,
   onSelectReport,
+  className,
+  floatingHeader,
 }: IncidentLeafletMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<L.Map | null>(null)
@@ -181,7 +186,21 @@ export default function IncidentLeafletMap({
     respondersLayerRef.current = respondersLayer
     mapInstanceRef.current = map
 
+    // Resize observer to ensure full-screen dimensions trigger map.invalidateSize()
+    const resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize()
+    })
+    if (mapContainerRef.current) {
+      resizeObserver.observe(mapContainerRef.current)
+    }
+
+    const timer = setTimeout(() => {
+      map.invalidateSize()
+    }, 200)
+
     return () => {
+      resizeObserver.disconnect()
+      clearTimeout(timer)
       map.remove()
       mapInstanceRef.current = null
     }
@@ -521,76 +540,108 @@ export default function IncidentLeafletMap({
   const handleZoomIn = () => mapInstanceRef.current?.zoomIn()
   const handleZoomOut = () => mapInstanceRef.current?.zoomOut()
 
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const toggleFullscreen = () => {
+    const el = mapContainerRef.current?.parentElement
+    if (!el) return
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().catch(() => {})
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen?.().catch(() => {})
+      setIsFullscreen(false)
+    }
+  }
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+      setTimeout(() => mapInstanceRef.current?.invalidateSize(), 150)
+    }
+    document.addEventListener('fullscreenchange', handleFsChange)
+    return () => document.removeEventListener('fullscreenchange', handleFsChange)
+  }, [])
+
   const activeRespondersCount = Object.values(combinedResponders).filter(
     (r) => r.mission_status !== 'completed'
   ).length
 
   return (
-    <div className="relative w-full h-[540px] sm:h-[680px] rounded-2xl overflow-hidden border border-zinc-200 shadow-sm bg-zinc-100">
+    <div
+      className={`relative w-full overflow-hidden bg-zinc-100 ${
+        className || 'h-[540px] sm:h-[680px] rounded-2xl border border-zinc-200 shadow-sm'
+      }`}
+    >
       {/* Map Container */}
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
       {/* Floating Header Controls Panel */}
-      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        {/* View Mode Toggle Pill */}
-        <div className="pointer-events-auto bg-white/95 backdrop-blur-md p-1.5 rounded-xl border border-zinc-200 shadow-md flex items-center gap-1">
-          <button
-            onClick={() => setViewMode('both')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              viewMode === 'both'
-                ? 'bg-zinc-900 text-white shadow-xs'
-                : 'text-zinc-600 hover:bg-zinc-100'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Combined</span>
-          </button>
-          <button
-            onClick={() => setViewMode('heatmap')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              viewMode === 'heatmap'
-                ? 'bg-red-600 text-white shadow-xs'
-                : 'text-zinc-600 hover:bg-zinc-100'
-            }`}
-          >
-            <Flame className="w-3.5 h-3.5" />
-            <span>Heatmap Only</span>
-          </button>
-          <button
-            onClick={() => setViewMode('pins')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              viewMode === 'pins'
-                ? 'bg-zinc-900 text-white shadow-xs'
-                : 'text-zinc-600 hover:bg-zinc-100'
-            }`}
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            <span>Pins Only</span>
-          </button>
+      <div className="absolute top-4 left-4 right-4 z-20 pointer-events-none flex flex-col lg:flex-row items-start justify-between gap-3">
+        {/* Left Side: Floating Header (Expandable Overview) */}
+        <div className="pointer-events-auto max-w-full">
+          {floatingHeader}
         </div>
 
-        {/* Live Responders Filter & Status Filter Pill */}
+        {/* Right Side: Map Controls (View Mode + Responders + Status Filters) */}
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          {/* View Mode Toggle Pill */}
+          <div className="bg-white/95 backdrop-blur-md p-1 rounded-xl border border-zinc-200 shadow-md flex items-center gap-1">
+            <button
+              onClick={() => setViewMode('both')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'both'
+                  ? 'bg-zinc-900 text-white shadow-xs'
+                  : 'text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Combined</span>
+            </button>
+            <button
+              onClick={() => setViewMode('heatmap')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'heatmap'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : 'text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>Heatmap</span>
+            </button>
+            <button
+              onClick={() => setViewMode('pins')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'pins'
+                  ? 'bg-zinc-900 text-white shadow-xs'
+                  : 'text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              <span>Pins</span>
+            </button>
+          </div>
+
           {/* Responder Layer Toggle */}
           <button
             onClick={() => setShowResponders(!showResponders)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md border ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md border cursor-pointer ${
               showResponders
                 ? 'bg-emerald-600 text-white border-emerald-700'
                 : 'bg-white/95 backdrop-blur-md text-zinc-600 border-zinc-200 hover:bg-zinc-50'
             }`}
           >
             <Car className="w-3.5 h-3.5" />
-            <span>Live Responders ({activeRespondersCount})</span>
+            <span className="hidden sm:inline">Live Responders</span> ({activeRespondersCount})
           </button>
 
           {/* Status Filter Pill */}
-          <div className="bg-white/95 backdrop-blur-md p-1.5 rounded-xl border border-zinc-200 shadow-md flex items-center gap-1">
+          <div className="bg-white/95 backdrop-blur-md p-1 rounded-xl border border-zinc-200 shadow-md flex items-center gap-1">
             {(['all', 'pending', 'accepted', 'rejected'] as const).map((st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase transition-all cursor-pointer ${
                   statusFilter === st
                     ? 'bg-red-600 text-white shadow-xs'
                     : 'text-zinc-600 hover:bg-zinc-100'
@@ -608,30 +659,37 @@ export default function IncidentLeafletMap({
         <button
           onClick={handleZoomIn}
           title="Zoom In"
-          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-zinc-700 hover:bg-zinc-50 transition-colors"
+          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-zinc-700 hover:bg-zinc-50 transition-colors cursor-pointer"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
         <button
           onClick={handleZoomOut}
           title="Zoom Out"
-          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-zinc-700 hover:bg-zinc-50 transition-colors"
+          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-zinc-700 hover:bg-zinc-50 transition-colors cursor-pointer"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
         <button
           onClick={handleFitBounds}
           title="Fit All Incidents & Responders"
-          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-zinc-700 hover:bg-zinc-50 transition-colors"
+          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-zinc-700 hover:bg-zinc-50 transition-colors cursor-pointer"
         >
           <Maximize2 className="w-4 h-4" />
         </button>
         <button
           onClick={handleResetCenter}
           title="Center on Tarragona MDRRMO"
-          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-red-600 hover:bg-zinc-50 transition-colors"
+          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-red-600 hover:bg-zinc-50 transition-colors cursor-pointer"
         >
           <Compass className="w-4 h-4" />
+        </button>
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+          className="p-2.5 rounded-xl bg-white border border-zinc-200 shadow-md text-zinc-700 hover:bg-zinc-50 transition-colors cursor-pointer"
+        >
+          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>
       </div>
 

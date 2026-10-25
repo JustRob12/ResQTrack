@@ -1,6 +1,6 @@
 'use client'
 
-import { ShieldAlert, LogOut } from 'lucide-react'
+import { ShieldAlert, LogOut, Loader2 } from 'lucide-react'
 
 interface HeaderProps {
   isAdmin?: boolean
@@ -50,10 +50,15 @@ export function Header({ isAdmin, isResponder, role, signingOut, onSignOut }: He
           <button
             onClick={onSignOut}
             disabled={signingOut}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-300 text-xs sm:text-sm font-medium text-zinc-700 bg-white hover:bg-zinc-100 transition-colors disabled:opacity-50"
+            title={signingOut ? 'Signing out...' : 'Sign Out'}
+            aria-label="Sign Out"
+            className="p-2.5 rounded-lg border border-zinc-200 text-zinc-600 hover:text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors disabled:opacity-50 flex items-center justify-center shadow-2xs"
           >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>{signingOut ? 'Signing out...' : 'Sign Out'}</span>
+            {signingOut ? (
+              <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+            ) : (
+              <LogOut className="w-4 h-4" />
+            )}
           </button>
         </div>
       </div>

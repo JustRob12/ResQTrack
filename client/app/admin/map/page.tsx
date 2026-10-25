@@ -19,6 +19,8 @@ import {
   X,
   Compass,
   CheckCircle2,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 
@@ -176,6 +178,10 @@ export default function AdminMapPage() {
     }
   }
 
+  // Floating Overview State
+  const [isOverviewExpanded, setIsOverviewExpanded] = useState(true)
+  const [showUnmappedDrawer, setShowUnmappedDrawer] = useState(false)
+
   // Summary Metrics
   const totalReports = allReports.length
   const mappedReports = allReports.filter(
@@ -203,6 +209,101 @@ export default function AdminMapPage() {
   const coveragePercent =
     totalReports > 0 ? Math.round((mappedReports / totalReports) * 100) : 100
 
+  // Floating Expandable/Collapsible Spatial Intelligence Overview Card (matching user's screenshot)
+  const floatingOverview = (
+    <div className="transition-all duration-300">
+      {isOverviewExpanded ? (
+        <div className="bg-white/95 backdrop-blur-md border border-zinc-200/90 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-3.5 max-w-3xl w-[calc(100vw-2rem)] sm:w-auto animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-bold mb-1.5">
+                <Flame className="w-3.5 h-3.5" />
+                MDRRMO Tarragona Spatial Intelligence
+              </div>
+              <h1 className="text-lg sm:text-xl font-black text-zinc-900 flex items-center gap-2">
+                Incident Mapping &amp; Heatmap Visualization
+              </h1>
+              <p className="text-xs text-zinc-500 mt-0.5 max-w-xl">
+                Real-time geospatial plotting, heat density clusters, and hazard corridor monitoring across Tarragona, Davao Oriental.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={fetchReports}
+                disabled={reportsLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-700 bg-white hover:bg-zinc-50 transition-colors shrink-0 shadow-2xs cursor-pointer"
+                title="Refresh Map Data"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${reportsLoading ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Refresh Map Data</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsOverviewExpanded(false)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-700 bg-white hover:bg-zinc-100 transition-colors shrink-0 shadow-2xs cursor-pointer"
+                title="Collapse Overview"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span className="text-[11px]">Collapse</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-3 border-t border-zinc-100 text-xs">
+            <div className="p-2.5 sm:p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+              <span className="text-zinc-400 block font-medium text-[11px]">Mapped Incidents</span>
+              <span className="text-base sm:text-lg font-bold text-zinc-800">
+                {mappedReports} <span className="text-xs text-zinc-400 font-normal">/ {totalReports}</span>
+              </span>
+            </div>
+            <div className="p-2.5 sm:p-3 bg-amber-50 rounded-xl border border-amber-100">
+              <span className="text-amber-700 block font-medium text-[11px]">Pending Review</span>
+              <span className="text-base sm:text-lg font-bold text-amber-900">{pendingMapped}</span>
+            </div>
+            <div className="p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+              <span className="text-emerald-700 block font-medium text-[11px]">Dispatched Operations</span>
+              <span className="text-base sm:text-lg font-bold text-emerald-900">{dispatchedMapped}</span>
+            </div>
+            <div className="p-2.5 sm:p-3 bg-purple-50 rounded-xl border border-purple-100">
+              <span className="text-purple-700 block font-medium text-[11px]">Live Field Responders</span>
+              <span className="text-base sm:text-lg font-bold text-purple-900">{activeResponders} active</span>
+            </div>
+            <div className="p-2.5 sm:p-3 bg-sky-50 rounded-xl border border-sky-100">
+              <span className="text-sky-700 block font-medium text-[11px]">Coordinate Coverage</span>
+              <span className="text-base sm:text-lg font-bold text-sky-900">{coveragePercent}%</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsOverviewExpanded(true)}
+          className="bg-white/95 backdrop-blur-md border border-zinc-200/90 rounded-xl px-3.5 py-2 shadow-lg flex items-center gap-2 text-xs font-bold text-zinc-800 hover:bg-white hover:border-zinc-300 transition-all cursor-pointer group"
+          title="Expand Overview Metrics"
+        >
+          <div className="p-1 rounded-md bg-red-50 text-red-600">
+            <Flame className="w-3.5 h-3.5" />
+          </div>
+          <span className="font-extrabold text-zinc-900">Spatial Intelligence</span>
+          <span className="text-zinc-300 font-normal">|</span>
+          <div className="flex items-center gap-1.5 text-zinc-600 font-semibold">
+            <span className="text-emerald-700 font-bold">{mappedReports} Mapped</span>
+            <span>&bull;</span>
+            <span className="text-purple-700 font-bold">{activeResponders} Responders</span>
+          </div>
+          <div className="flex items-center gap-1 text-[11px] text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded-lg group-hover:bg-red-100 transition-colors ml-1">
+            <span>Expand</span>
+            <ChevronDown className="w-3.5 h-3.5" />
+          </div>
+        </button>
+      )}
+    </div>
+  )
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50">
@@ -215,17 +316,17 @@ export default function AdminMapPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-50 text-zinc-900 pb-28 sm:pb-16">
+    <div className="min-h-screen flex flex-col bg-zinc-900 text-zinc-900 overflow-hidden">
       {/* Top Header */}
       <Header isAdmin={true} signingOut={signingOut} onSignOut={handleSignOut} />
 
       {/* Admin Modules Navigation */}
       <AdminNav pendingCount={allReports.filter((r) => r.status === 'pending').length} />
 
-      {/* Missing table notice */}
+      {/* Database Schema Setup Notice */}
       {tableMissingNotice && (
-        <div className="max-w-7xl mx-auto w-full px-4 pt-4">
-          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-xs sm:text-sm text-amber-800 flex items-start justify-between gap-3">
+        <div className="absolute top-28 left-4 right-4 z-40 max-w-xl mx-auto">
+          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-xs sm:text-sm text-amber-800 flex items-start justify-between gap-3 shadow-lg">
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
               <div>
@@ -235,7 +336,7 @@ export default function AdminMapPage() {
             </div>
             <button
               onClick={() => setTableMissingNotice(false)}
-              className="text-amber-600 hover:text-amber-800"
+              className="text-amber-600 hover:text-amber-800 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -243,140 +344,93 @@ export default function AdminMapPage() {
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-6 flex-1 space-y-6">
-        {/* Module Title & Spatial Overview */}
-        <div className="bg-white border border-zinc-200 rounded-xl p-5 sm:p-6 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-bold mb-2">
-                <Flame className="w-3.5 h-3.5" />
-                MDRRMO Tarragona Spatial Intelligence
-              </div>
-              <h1 className="text-xl sm:text-2xl font-black text-zinc-900 flex items-center gap-2">
-                Incident Mapping &amp; Heatmap Visualization
-              </h1>
-              <p className="text-xs sm:text-sm text-zinc-500 mt-1">
-                Real-time geospatial plotting, heat density clusters, and hazard corridor monitoring across Tarragona, Davao Oriental.
-              </p>
-            </div>
+      {/* Main Full-Screen Map Viewport */}
+      <main className="relative flex-1 w-full h-[calc(100dvh-64px)] sm:h-[calc(100dvh-113px)] overflow-hidden">
+        {/* Full-Screen Interactive Leaflet Map */}
+        <IncidentLeafletMap
+          reports={allReports}
+          className="w-full h-full rounded-none border-0 shadow-none"
+          floatingHeader={floatingOverview}
+        />
 
-            <button
-              onClick={fetchReports}
-              disabled={reportsLoading}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-700 bg-white hover:bg-zinc-50 transition-colors shrink-0"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${reportsLoading ? 'animate-spin' : ''}`} />
-              <span>Refresh Map Data</span>
-            </button>
-          </div>
-
-          {/* Quick Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-5 pt-4 border-t border-zinc-100 text-xs">
-            <div className="p-3 bg-zinc-50 rounded-lg">
-              <span className="text-zinc-400 block font-medium">Mapped Incidents</span>
-              <span className="text-lg font-bold text-zinc-800">
-                {mappedReports} <span className="text-xs text-zinc-400 font-normal">/ {totalReports}</span>
-              </span>
-            </div>
-            <div className="p-3 bg-amber-50 rounded-lg">
-              <span className="text-amber-700 block font-medium">Pending Review</span>
-              <span className="text-lg font-bold text-amber-900">{pendingMapped}</span>
-            </div>
-            <div className="p-3 bg-emerald-50 rounded-lg">
-              <span className="text-emerald-700 block font-medium">Dispatched Operations</span>
-              <span className="text-lg font-bold text-emerald-900">{dispatchedMapped}</span>
-            </div>
-            <div className="p-3 bg-purple-50 rounded-lg">
-              <span className="text-purple-700 block font-medium">Live Field Responders</span>
-              <span className="text-lg font-bold text-purple-900">{activeResponders} active</span>
-            </div>
-            <div className="p-3 bg-sky-50 rounded-lg">
-              <span className="text-sky-700 block font-medium">Coordinate Coverage</span>
-              <span className="text-lg font-bold text-sky-900">{coveragePercent}%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Success alert after coordinates assigned */}
+        {/* Floating Success Alert */}
         {assignSuccess && (
-          <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2.5 animate-in fade-in">
+          <div className="absolute top-24 left-4 z-30 p-3 bg-emerald-50/95 backdrop-blur-md border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{assignSuccess}</span>
           </div>
         )}
 
-        {/* Unmapped Incidents (Missing GPS) Manager Panel */}
+        {/* Floating Unmapped Incidents Trigger Button & Modal */}
         {unmappedReports.length > 0 && (
-          <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-amber-950 font-bold text-sm">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+          <div className="absolute bottom-4 left-4 z-20 pointer-events-auto">
+            {!showUnmappedDrawer ? (
+              <button
+                type="button"
+                onClick={() => setShowUnmappedDrawer(true)}
+                className="bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition-all cursor-pointer"
+              >
+                <AlertTriangle className="w-4 h-4" />
                 <span>
-                  {unmappedReports.length} Incident{unmappedReports.length > 1 ? 's' : ''} Missing GPS Coordinates (Unmapped)
+                  {unmappedReports.length} Unmapped Incident{unmappedReports.length > 1 ? 's' : ''} (Plot Coordinates)
                 </span>
-              </div>
-              <span className="text-xs text-amber-800 font-medium">
-                Submitted without GPS. Click a Barangay below to plot it immediately on the map:
-              </span>
-            </div>
-
-            <div className="space-y-2.5">
-              {unmappedReports.map((report: ReportItem) => {
-                const isBusy = assigningId === report.id
-                return (
-                  <div
-                    key={report.id}
-                    className="bg-white p-3.5 sm:p-4 rounded-xl border border-amber-200 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-zinc-900 text-sm">{report.title}</span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
-                          Needs Location
-                        </span>
-                      </div>
-                      <div className="text-zinc-500 mt-1 flex flex-wrap items-center gap-2">
-                        <span>
-                          Reporter: <strong className="text-zinc-700">{report.profiles?.full_name || 'Citizen'}</strong>
-                        </span>
-                        {report.caption && (
-                          <span>
-                            &bull; Landmarks: <em className="text-zinc-700 font-semibold">&ldquo;{report.caption}&rdquo;</em>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Quick Barangay Assignment Pill Buttons */}
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-zinc-500 font-bold text-[11px] mr-1 flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-red-600" />
-                        <span>Plot at:</span>
-                      </span>
-                      {TARRAGONA_BARANGAYS.map((b) => (
-                        <button
-                          key={b.name}
-                          type="button"
-                          onClick={() => handleAssignCoordinates(report.id, b.lat, b.lng, b.name)}
-                          disabled={isBusy}
-                          className="px-2.5 py-1 rounded-lg bg-zinc-50 hover:bg-red-50 hover:border-red-300 hover:text-red-700 text-zinc-700 font-semibold text-[11px] transition-all border border-zinc-200 flex items-center gap-1 disabled:opacity-50 cursor-pointer shadow-2xs"
-                          title={`Plot coordinates to ${b.name} (${b.lat}, ${b.lng})`}
-                        >
-                          {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                          <span>{b.name}</span>
-                        </button>
-                      ))}
-                    </div>
+              </button>
+            ) : (
+              <div className="bg-white/95 backdrop-blur-md border border-amber-300 rounded-2xl p-4 shadow-2xl max-w-lg w-[calc(100vw-2rem)] sm:w-auto max-h-[60vh] overflow-y-auto space-y-3 animate-in fade-in zoom-in-95">
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+                  <div className="flex items-center gap-2 text-amber-950 font-bold text-xs sm:text-sm">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <span>Plot Unmapped Incidents on Map</span>
                   </div>
-                )
-              })}
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowUnmappedDrawer(false)}
+                    className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {unmappedReports.map((report: ReportItem) => {
+                    const isBusy = assigningId === report.id
+                    return (
+                      <div
+                        key={report.id}
+                        className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 text-xs space-y-2"
+                      >
+                        <div className="font-bold text-zinc-900">{report.title}</div>
+                        <div className="text-[11px] text-zinc-600">
+                          Reporter: <strong className="text-zinc-700">{report.profiles?.full_name || 'Citizen'}</strong>
+                          {report.caption && (
+                            <span> &bull; &ldquo;{report.caption}&rdquo;</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          <span className="text-[11px] font-semibold text-zinc-500 flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-red-600" /> Plot at:
+                          </span>
+                          {TARRAGONA_BARANGAYS.map((b) => (
+                            <button
+                              key={b.name}
+                              type="button"
+                              onClick={() => handleAssignCoordinates(report.id, b.lat, b.lng, b.name)}
+                              disabled={isBusy}
+                              className="px-2 py-0.5 rounded-lg bg-white hover:bg-red-50 hover:text-red-700 text-zinc-700 font-semibold text-[10px] border border-zinc-200 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                            >
+                              {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                              {b.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
-
-        {/* Interactive Leaflet Map with Heatmap */}
-        <IncidentLeafletMap reports={allReports} />
       </main>
     </div>
   )
