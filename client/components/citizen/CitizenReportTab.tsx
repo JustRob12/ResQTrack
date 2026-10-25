@@ -222,8 +222,8 @@ export function CitizenReportTab({
                     onUploadImage={() => galleryInputRef.current?.click()}
                   />
 
-                  {/* Accessible Upload Button right beneath camera */}
-                  <div className="flex flex-col items-center justify-center gap-2 pt-1">
+                  {/* Accessible Upload Button beneath camera on desktop */}
+                  <div className="hidden xl:flex flex-col items-center justify-center gap-2 pt-1">
                     <div className="flex items-center gap-3 w-full max-w-sm my-1">
                       <div className="h-px bg-zinc-200 flex-1" />
                       <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
@@ -285,24 +285,27 @@ export function CitizenReportTab({
           {selectedFile && (
             <form onSubmit={onSubmit} className="space-y-5">
               {/* Captured Photo Preview Banner */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
+              <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] flex items-center justify-center font-bold">
+                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] flex items-center justify-center font-bold shrink-0">
                       ✓
                     </span>
                     <span className="text-xs sm:text-sm font-bold text-zinc-800">
                       Photo Attached — Input Remaining Details
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleRetake}
-                    className="text-xs text-red-600 hover:text-red-700 font-semibold flex items-center gap-1 py-1 px-2.5 rounded-lg hover:bg-red-50 transition-colors"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Retake / Change Photo</span>
-                  </button>
+
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleRetake}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 active:bg-zinc-200/90 border border-zinc-200 text-xs font-semibold text-zinc-700 hover:text-zinc-900 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Retake / Change Photo</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="relative rounded-2xl overflow-hidden bg-black aspect-4/3 sm:aspect-16/9 w-full max-w-lg mx-auto flex items-center justify-center shadow-md border border-zinc-200">
